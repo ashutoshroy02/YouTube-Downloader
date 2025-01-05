@@ -1,41 +1,60 @@
-import os
+from pytubefix import YouTube
 import streamlit as st
-from pytube import YouTube, Playlist
+import os
+from tkinter import Tk, filedialog
 
-# Function to download videos from a playlist
-def download_playlist_videos(playlist_link, save_path, start_episode, end_episode):
-    playlist = Playlist(playlist_link)
-    playlist_links = list(playlist.video_urls)
-    num_videos = min(len(playlist_links), end_episode)
-    st.write(f"Downloading episodes {start_episode} to {num_videos} from the playlist...")
-    
-    for i in range(start_episode-1, num_videos):
-        link = playlist_links[i]
-        yt = YouTube(link)
-        video = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
-        title = yt.title
-        video.download(save_path)
-        st.write(f"Episode {i+1}: {title} - Downloaded.")
+def choose_save_location(default_filename):
+    root = Tk()
+    root.withdraw()  
+    root.attributes("-topmost", True)  
 
-# Streamlit app
-def main():
-    st.title("YouTube Playlist Downloader")
-    st.write("Enter the YouTube playlist link, choose the range of episodes to download, and specify where to save the videos.")
+    save_path = filedialog.asksaveasfilename(
+        initialfile=default_filename,
+        defaultextension=".mp4",
+        filetypes=[("MP4 files", "*.mp4"), ("All files", "*.*")]
+    )
+    root.destroy() 
+    return save_path
 
-    # Input fields
-    playlist_link = st.text_input("Enter the playlist link:")
-    start_episode = st.number_input("Enter the start episode:", min_value=1, step=1)
-    end_episode = st.number_input("Enter the end episode:", min_value=start_episode, step=1)
-    default_download_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
-    save_path = st.text_input("Enter the path to save the videos:", default_download_dir)
+st.title("🎥 YOUTUBE VIDEO DOWNLOADER 🫠")
 
-    # Download button
-    if st.button("Download Videos"):
-        if playlist_link and save_path:
-            download_playlist_videos(playlist_link, save_path, start_episode, end_episode)
-            st.write("Download completed.")
+def download_video_with_progress(video_url, save_path):
+    try:
+        yt = YouTube(video_url)
+        
+        st.write(f"**Title:** {yt.title}")
+        st.write(f"**Author:** {yt.author}")
+        st.write(f"**Video Length:** {yt.length // 60} min {yt.length % 60} sec")
+        st.image(yt.thumbnail_url, caption="Video Thumbnail", use_column_width=True)
+        
+        stream = yt.streams.get_highest_resolution()
+        total_file_size = stream.filesize
+        progress_bar = st.progress(0)
+
+        def progress_function(stream, chunk, bytes_remaining):
+            percent_complete = (total_file_size - bytes_remaining) / total_file_size
+            progress_bar.progress(min(percent_complete, 1.0))
+
+        yt.register_on_progress_callback(progress_function)
+
+        st.write("Downloading...")
+        stream.download(output_path=os.path.dirname(save_path), filename=os.path.basename(save_path))
+
+        st.success(f"✅ Download completed: {save_path}")
+    except Exception as e:
+        st.error(f"❌ An error occurred: {e}")
+
+video_url = st.text_input("🔗 Paste YouTube Video Link Below")
+
+if st.button("Download Video"):
+    if video_url:
+        yt = YouTube(video_url)
+        default_filename = f"{yt.title}.mp4"
+        
+        save_path = choose_save_location(default_filename)
+        if save_path:
+            download_video_with_progress(video_url, save_path)
         else:
-            st.write("Please provide both playlist link and save path.")
-
-if __name__ == "__main__":
-    main()
+            st.warning("⚠️ No file location selected. Download canceled.")
+    else:
+        st.error("❌ Please enter a valid YouTube URL.")
